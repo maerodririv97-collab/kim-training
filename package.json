@@ -1,0 +1,35 @@
+{
+  "name": "kim-training",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "cargo run --bin main",
+    "build": "tsc -b && vite build",
+    "vercel-build": "node scripts/migrate.mjs && npm run build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "db:reset": "node scripts/reset-db.mjs",
+    "db:create-admin": "node scripts/create-admin.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.107.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "7.18.5"
+  },
+  "devDependencies": {
+    "@node-rs/argon2": "2.2.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "dotenv": "17.2.3",
+    "pg": "8.23.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}

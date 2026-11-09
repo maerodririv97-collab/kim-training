@@ -1,0 +1,37 @@
+[package]
+name = "kim-training-api"
+version = "0.1.0"
+edition = "2024"
+publish = false
+autobins = false
+autoexamples = false
+autotests = false
+
+[lib]
+name = "kim_training"
+path = "server/lib.rs"
+
+# Función serverless de Vercel: un solo binario atiende todo /api/* (ver rewrites en vercel.json).
+# En local, `cargo run --bin main` levanta el mismo servidor en http://127.0.0.1:3000.
+[[bin]]
+name = "main"
+path = "api/main.rs"
+
+[dependencies]
+argon2 = "0.5"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+dotenvy = "0.15"
+jsonwebtoken = "9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "chrono", "macros", "json"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+vercel_runtime = { version = "2.4", features = ["axum"] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3

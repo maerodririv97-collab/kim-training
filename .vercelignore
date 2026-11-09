@@ -1,0 +1,6 @@
+target/**
+!target/release
+!target/x86_64-unknown-linux-gnu/release/**
+!target/aarch64-unknown-linux-gnu/release/**
+node_modules
+fitclass-prototype.html
