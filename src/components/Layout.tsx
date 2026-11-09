@@ -19,6 +19,7 @@ export const ADMIN_NAV = [
   { to: '/admin/profesores', label: 'Profesores', icon: 'users' },
   { to: '/admin/estudiantes', label: 'Estudiantes', icon: 'user' },
   { to: '/admin/reportes', label: 'Reportes', icon: 'chart' },
+  { to: '/admin/implementos', label: 'Implementos', icon: 'box' },
   { to: '/admin/catalogo', label: 'Planes y promos', icon: 'tag' },
 ];
 

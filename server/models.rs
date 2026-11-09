@@ -67,6 +67,8 @@ pub struct PlanStatus {
     pub price: i64,
     pub starts_on: NaiveDate,
     pub ends_on: NaiveDate,
+    /// Nombres de los implementos que incluye el plan (ej. "Moto").
+    pub implements: Vec<String>,
 }
 
 /// SELECT de planes asignados con su consumo (`sp` = student_plans).
@@ -74,7 +76,10 @@ pub fn plan_status_select() -> String {
     format!(
         "SELECT sp.id, sp.name, sp.total_classes,
                 u.used, (sp.total_classes - u.used) AS remaining,
-                sp.price, sp.starts_on, sp.ends_on
+                sp.price, sp.starts_on, sp.ends_on,
+                coalesce((SELECT array_agg(i.name ORDER BY i.name) FROM student_plan_implements spi
+                          JOIN implements i ON i.id = spi.implement_id
+                          WHERE spi.student_plan_id = sp.id), '{{}}') AS implements
          FROM student_plans sp
          CROSS JOIN LATERAL (
             SELECT count(*)::int AS used FROM bookings b
@@ -93,6 +98,61 @@ pub async fn current_plan(db: &sqlx::PgPool, student_id: i64, today: NaiveDate) 
     .bind(student_id)
     .bind(today)
     .fetch_optional(db)
+    .await
+}
+
+/// Condición SQL: el implemento `i` aplica a la disciplina `discipline_expr`
+/// (si no tiene disciplinas asociadas, aplica a todas).
+pub fn implement_applies(discipline_expr: &str) -> String {
+    format!(
+        "(NOT EXISTS (SELECT 1 FROM implement_disciplines x WHERE x.implement_id = i.id)
+                       OR EXISTS (SELECT 1 FROM implement_disciplines x WHERE x.implement_id = i.id AND x.discipline_id = {discipline_expr}))"
+    )
+}
+
+/// Uso de un implemento en el horario de una clase.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ImplementUsage {
+    pub id: i64,
+    pub name: String,
+    pub quantity: i32,
+    /// Unidades apartadas en todas las clases que se cruzan con este horario (incluida esta).
+    pub used: i32,
+    /// Unidades apartadas en esta clase.
+    pub in_class: i32,
+    pub available: i32,
+}
+
+/// Subconsulta: unidades del implemento `i` apartadas en clases no canceladas que se cruzan con la clase `c`.
+/// Es conservadora: cuenta todas las reservas cuyo horario se solapa con el de `c`.
+pub fn implement_used_sql() -> String {
+    format!(
+        "(SELECT count(*) FROM booking_implements bi
+          JOIN bookings b ON b.id = bi.booking_id AND b.status IN {SEAT_STATUSES}
+          JOIN classes o ON o.id = b.class_id AND NOT o.cancelled
+          WHERE bi.implement_id = i.id
+            AND o.starts_at < c.starts_at + make_interval(mins => c.duration_min)
+            AND c.starts_at < o.starts_at + make_interval(mins => o.duration_min))::int"
+    )
+}
+
+/// Implementos que aplican a la clase `$1` con su uso en ese horario.
+pub async fn class_implements(conn: &mut sqlx::PgConnection, class_id: i64) -> Result<Vec<ImplementUsage>, sqlx::Error> {
+    sqlx::query_as::<_, ImplementUsage>(&format!(
+        "SELECT i.id, i.name, i.quantity, u.used,
+                (SELECT count(*) FROM booking_implements bi JOIN bookings b ON b.id = bi.booking_id
+                 WHERE bi.implement_id = i.id AND b.class_id = c.id AND b.status IN {SEAT_STATUSES})::int AS in_class,
+                greatest(i.quantity - u.used, 0) AS available
+         FROM classes c
+         JOIN implements i ON i.active AND {}
+         CROSS JOIN LATERAL (SELECT {} AS used) u
+         WHERE c.id = $1
+         ORDER BY i.name",
+        implement_applies("c.discipline_id"),
+        implement_used_sql()
+    ))
+    .bind(class_id)
+    .fetch_all(conn)
     .await
 }
 

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import type { Discipline, Plan, StudentRow, Teacher } from '../../api/types';
+import type { Discipline, Implement, Plan, StudentRow, Teacher } from '../../api/types';
 import { useSheet, useToast } from '../../components/ui';
 
 export const useDisciplines = () =>
@@ -11,6 +11,9 @@ export const useTeachers = () =>
 
 export const usePlans = () =>
   useQuery({ queryKey: ['plans'], queryFn: () => api.get<Plan[]>('/admin/plans'), staleTime: 30_000 });
+
+export const useImplements = () =>
+  useQuery({ queryKey: ['implements'], queryFn: () => api.get<Implement[]>('/admin/implements'), staleTime: 30_000 });
 
 export const useStudents = (q = '') =>
   useQuery({ queryKey: ['students', q], queryFn: () => api.get<StudentRow[]>(`/admin/students${q ? `?q=${encodeURIComponent(q)}` : ''}`) });

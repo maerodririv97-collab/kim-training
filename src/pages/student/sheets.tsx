@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { ApiError, api } from '../../api/client';
-import type { BookingResult, CancelResult, ClassItem, Overview, WaitlistResult } from '../../api/types';
+import type { BookingResult, CancelResult, ClassItem, PlanOption, WaitlistResult } from '../../api/types';
+import { PlanPicker } from '../../components/PlanPicker';
 import { Icon } from '../../components/Icon';
 import { Badge, DiscTag, ErrorState, Loading, SheetHead, occStatus, useSheet, useToast } from '../../components/ui';
 import { dateKey, fmtDayShort, fmtRelativeDay, fmtTime, hoursUntil } from '../../lib/format';
@@ -23,6 +25,15 @@ function useAfterMutation() {
     close();
     toast(msg, icon);
   };
+}
+
+/** Planes con los que el estudiante puede tomar la clase y el elegido (por defecto, el que vence primero). */
+function usePlanChoice(classId: number, initial?: number) {
+  const q = useQuery({ queryKey: ['plan-options', classId], queryFn: () => api.get<PlanOption[]>(`/me/classes/${classId}/plan-options`) });
+  const [planId, setPlanId] = useState(initial ?? 0);
+  const options = q.data ?? [];
+  const chosen = options.find((p) => p.id === planId) ?? options[0];
+  return { options, chosen, setPlanId, loading: q.isLoading };
 }
 
 function ErrorBox({ error }: { error: unknown }) {
@@ -83,13 +94,12 @@ export function BookingSheet({ c }: { c: ClassLike }) {
   const done = useAfterMutation();
   const { open, close } = useSheet();
   const navigate = useNavigate();
-  const overview = useQuery({ queryKey: ['overview'], queryFn: () => api.get<Overview>('/me/overview') });
-  const plan = overview.data?.plan;
+  const { options, chosen: plan, setPlanId, loading } = usePlanChoice(c.id);
   const m = useMutation({
-    mutationFn: () => api.post<BookingResult>('/me/bookings', { class_id: c.id }),
+    mutationFn: () => api.post<BookingResult>('/me/bookings', { class_id: c.id, plan_id: plan?.id ?? null }),
     onSuccess: () => done(`Reserva confirmada · ${c.discipline}`),
     onError: (e) => {
-      if (e instanceof ApiError && e.code === 'class_full') open(<WaitlistSheet c={c} />);
+      if (e instanceof ApiError && e.code === 'class_full') open(<WaitlistSheet c={c} planId={plan?.id} />);
     },
   });
   const noPlan = m.error instanceof ApiError && m.error.code === 'no_plan';
@@ -103,19 +113,25 @@ export function BookingSheet({ c }: { c: ClassLike }) {
       <div className="sum-row"><span className="k">Profesora/Profesor</span><span className="v">{c.teacher}</span></div>
       <div className="sum-row"><span className="k">Duración</span><span className="v">{c.duration_min} min</span></div>
       <div className="sum-row"><span className="k">Ubicación</span><span className="v">{c.location}</span></div>
+      <div style={{ marginTop: 12 }}>
+        <PlanPicker options={options} value={plan?.id ?? 0} onChange={setPlanId} label="¿De qué plan descontamos la clase?" />
+      </div>
       <div className="deduct-box">
         <div className="ic"><Icon name="bolt" size={18} /></div>
         <p>
           Se descontará
           <strong>1 clase de tu plan{plan ? ` (${plan.name})` : ''}</strong>
           {plan && <>Te quedarán {Math.max(0, plan.remaining - 1)} clases disponibles.</>}
+          {plan && plan.implements.length > 0 && (
+            <> {plan.implements_available ? `Incluye ${plan.implements.join(', ')} para esta clase.` : `No quedan unidades de ${plan.implements.join(', ')} en este horario.`}</>
+          )}
         </p>
       </div>
       <ErrorBox error={m.error} />
       {noPlan ? (
         <button className="btn btn-ghost btn-block" onClick={() => { close(); navigate('/perfil'); }}>Ver mis planes</button>
       ) : (
-        <button className="btn btn-pulse btn-block" disabled={m.isPending} onClick={() => m.mutate()}>
+        <button className="btn btn-pulse btn-block" disabled={loading || m.isPending} onClick={() => m.mutate()}>
           {m.isPending ? <span className="spinner" /> : 'Confirmar reserva'}
         </button>
       )}
@@ -125,10 +141,12 @@ export function BookingSheet({ c }: { c: ClassLike }) {
 
 // ---------------------------------------------------------------- Lista de espera
 
-export function WaitlistSheet({ c }: { c: ClassLike }) {
+export function WaitlistSheet({ c, planId }: { c: ClassLike; planId?: number }) {
   const done = useAfterMutation();
+  const { options, chosen, setPlanId, loading } = usePlanChoice(c.id, planId);
   const m = useMutation({
-    mutationFn: () => api.post<WaitlistResult>('/me/waitlist', { class_id: c.id }),
+    // Solo se envía el plan si había que elegir; con uno solo se deja que el servidor use el vigente.
+    mutationFn: () => api.post<WaitlistResult>('/me/waitlist', { class_id: c.id, plan_id: options.length > 1 ? chosen?.id ?? null : null }),
     onSuccess: (r) => done(`Estás #${r.position} en la lista de espera`, 'bell'),
   });
   return (
@@ -144,8 +162,11 @@ export function WaitlistSheet({ c }: { c: ClassLike }) {
           <strong style={{ display: 'inline' }}>{WAITLIST_HOURS} horas</strong>, tu solicitud se cancelará automáticamente.
         </p>
       </div>
+      <div style={{ marginTop: 12 }}>
+        <PlanPicker options={options} value={chosen?.id ?? 0} onChange={setPlanId} label="Si se libera el cupo, descontar del plan" />
+      </div>
       <ErrorBox error={m.error} />
-      <button className="btn btn-primary btn-block" disabled={m.isPending} onClick={() => m.mutate()}>
+      <button className="btn btn-primary btn-block" disabled={loading || m.isPending} onClick={() => m.mutate()}>
         {m.isPending ? <span className="spinner" /> : 'Unirme a lista de espera'}
       </button>
     </>

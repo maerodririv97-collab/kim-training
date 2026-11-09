@@ -35,6 +35,7 @@ struct PlanRow {
     price: i64,
     active: bool,
     active_students: i32,
+    implement_ids: Vec<i64>,
 }
 
 async fn list_plans(State(state): State<AppState>, _: Admin) -> ApiResult<Json<Vec<PlanRow>>> {
@@ -42,7 +43,9 @@ async fn list_plans(State(state): State<AppState>, _: Admin) -> ApiResult<Json<V
         sqlx::query_as::<_, PlanRow>(
             "SELECT p.id, p.name, p.total_classes, p.duration_days, p.price, p.active,
                     (SELECT count(DISTINCT sp.student_id) FROM student_plans sp
-                     WHERE sp.plan_id = p.id AND CURRENT_DATE BETWEEN sp.starts_on AND sp.ends_on)::int AS active_students
+                     WHERE sp.plan_id = p.id AND CURRENT_DATE BETWEEN sp.starts_on AND sp.ends_on)::int AS active_students,
+                    coalesce((SELECT array_agg(pi.implement_id ORDER BY pi.implement_id) FROM plan_implements pi
+                              WHERE pi.plan_id = p.id), '{}') AS implement_ids
              FROM plans p ORDER BY p.active DESC, p.price",
         )
         .fetch_all(&state.db)
@@ -58,6 +61,19 @@ struct PlanBody {
     price: i64,
     #[serde(default = "yes")]
     active: bool,
+    /// Implementos incluidos en el plan: cada reserva hecha con él aparta una unidad.
+    #[serde(default)]
+    implement_ids: Vec<i64>,
+}
+
+async fn save_plan_implements(tx: &mut sqlx::PgConnection, id: i64, ids: &[i64]) -> ApiResult<()> {
+    sqlx::query("DELETE FROM plan_implements WHERE plan_id = $1").bind(id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO plan_implements (plan_id, implement_id) SELECT $1, unnest($2::bigint[]) ON CONFLICT DO NOTHING")
+        .bind(id)
+        .bind(ids)
+        .execute(&mut *tx)
+        .await?;
+    Ok(())
 }
 
 fn validate_plan(b: &PlanBody) -> ApiResult<()> {
@@ -72,6 +88,7 @@ fn validate_plan(b: &PlanBody) -> ApiResult<()> {
 
 async fn create_plan(State(state): State<AppState>, _: Admin, Json(b): Json<PlanBody>) -> ApiResult<Json<Value>> {
     validate_plan(&b)?;
+    let mut tx = state.db.begin().await?;
     let (id,): (i64,) = sqlx::query_as(
         "INSERT INTO plans (name, total_classes, duration_days, price, active) VALUES ($1, $2, $3, $4, $5) RETURNING id",
     )
@@ -80,13 +97,16 @@ async fn create_plan(State(state): State<AppState>, _: Admin, Json(b): Json<Plan
     .bind(b.duration_days)
     .bind(b.price)
     .bind(b.active)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await?;
+    save_plan_implements(&mut tx, id, &b.implement_ids).await?;
+    tx.commit().await?;
     Ok(Json(json!({ "id": id })))
 }
 
 async fn update_plan(State(state): State<AppState>, _: Admin, Path(id): Path<i64>, Json(b): Json<PlanBody>) -> ApiResult<Json<Value>> {
     validate_plan(&b)?;
+    let mut tx = state.db.begin().await?;
     let res = sqlx::query("UPDATE plans SET name = $2, total_classes = $3, duration_days = $4, price = $5, active = $6 WHERE id = $1")
         .bind(id)
         .bind(b.name.trim())
@@ -94,11 +114,14 @@ async fn update_plan(State(state): State<AppState>, _: Admin, Path(id): Path<i64
         .bind(b.duration_days)
         .bind(b.price)
         .bind(b.active)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     if res.rows_affected() == 0 {
         return Err(AppError::not_found("El plan no existe"));
     }
+    // Solo afecta asignaciones futuras: los planes ya asignados conservan su copia de implementos.
+    save_plan_implements(&mut tx, id, &b.implement_ids).await?;
+    tx.commit().await?;
     Ok(Json(json!({ "ok": true })))
 }
 

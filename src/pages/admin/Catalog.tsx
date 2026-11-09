@@ -5,16 +5,21 @@ import type { AdminPromotion, Plan } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, DiscTag, ErrorState, Field, Loading, SheetHead, useSheet } from '../../components/ui';
 import { fmtDate, fmtMoney } from '../../lib/format';
-import { useDisciplines, useDone, usePlans } from './hooks';
+import { useDisciplines, useDone, useImplements, usePlans } from './hooks';
 
 function PlanSheet({ plan }: { plan?: Plan }) {
   const done = useDone();
+  const implements_ = useImplements();
+  const [implementIds, setImplementIds] = useState<number[]>(plan?.implement_ids ?? []);
   const [f, setF] = useState({
     name: plan?.name ?? '', total_classes: plan?.total_classes ?? 12, duration_days: plan?.duration_days ?? 30,
     price: plan?.price ?? 0, active: plan?.active ?? true,
   });
   const m = useMutation({
-    mutationFn: () => (plan ? api.put(`/admin/plans/${plan.id}`, f) : api.post('/admin/plans', f)),
+    mutationFn: () => {
+      const body = { ...f, implement_ids: implementIds };
+      return plan ? api.put(`/admin/plans/${plan.id}`, body) : api.post('/admin/plans', body);
+    },
     onSuccess: () => done(plan ? 'Plan actualizado' : 'Plan creado'),
   });
   const submit = (e: FormEvent) => { e.preventDefault(); m.mutate(); };
@@ -28,6 +33,18 @@ function PlanSheet({ plan }: { plan?: Plan }) {
         <Field label="Vigencia (días)"><input type="number" min={1} value={f.duration_days} onChange={(e) => setF({ ...f, duration_days: Number(e.target.value) })} required /></Field>
       </div>
       <Field label="Precio (COP)"><input type="number" min={0} step={1000} value={f.price} onChange={(e) => setF({ ...f, price: Number(e.target.value) })} required /></Field>
+      {(implements_.data ?? []).some((i) => i.active || implementIds.includes(i.id)) && (
+        <div className="form-field">
+          <label>Incluye implemento (cada reserva aparta una unidad)</label>
+          {(implements_.data ?? []).filter((i) => i.active || implementIds.includes(i.id)).map((i) => (
+            <label key={i.id} className="check-row">
+              <input type="checkbox" checked={implementIds.includes(i.id)}
+                onChange={() => setImplementIds((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} />
+              {i.name} <span className="muted" style={{ fontSize: 12 }}>· {i.quantity} unidades</span>
+            </label>
+          ))}
+        </div>
+      )}
       <label className="check-row" style={{ marginBottom: 14 }}>
         <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Disponible para asignar
       </label>
@@ -93,6 +110,8 @@ export function AdminCatalog() {
   const { open } = useSheet();
   const plans = usePlans();
   const disciplines = useDisciplines();
+  const implements_ = useImplements();
+  const implementNames = (ids: number[]) => ids.map((id) => implements_.data?.find((i) => i.id === id)?.name).filter(Boolean).join(', ');
   const promos = useQuery({ queryKey: ['promotions'], queryFn: () => api.get<AdminPromotion[]>('/admin/promotions') });
   const discName = (id: number) => disciplines.data?.find((d) => d.id === id);
 
@@ -107,11 +126,11 @@ export function AdminCatalog() {
       {plans.isLoading ? <Loading /> : plans.error ? <ErrorState error={plans.error} /> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Plan</th><th>Clases</th><th>Vigencia</th><th>Precio</th><th>Estudiantes activos</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Plan</th><th>Clases</th><th>Vigencia</th><th>Precio</th><th>Implementos</th><th>Estudiantes activos</th><th>Estado</th><th></th></tr></thead>
             <tbody>{plans.data?.map((p) => (
               <tr key={p.id}>
                 <td><strong>{p.name}</strong></td><td className="mono">{p.total_classes}</td><td className="mono">{p.duration_days} días</td>
-                <td className="mono">{fmtMoney(p.price)}</td><td className="mono">{p.active_students}</td>
+                <td className="mono">{fmtMoney(p.price)}</td><td>{implementNames(p.implement_ids) || '—'}</td><td className="mono">{p.active_students}</td>
                 <td>{p.active ? <Badge kind="open" label="Activo" /> : <Badge kind="done" label="Inactivo" />}</td>
                 <td><button className="btn btn-ghost btn-sm" onClick={() => open(<PlanSheet plan={p} />)}>Editar</button></td>
               </tr>

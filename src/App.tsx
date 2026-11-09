@@ -12,6 +12,7 @@ import { AdminCalendar } from './pages/admin/Calendar';
 import { AdminCatalog } from './pages/admin/Catalog';
 import { AdminDashboard } from './pages/admin/Dashboard';
 import { AdminDisciplines } from './pages/admin/Disciplines';
+import { AdminImplements } from './pages/admin/Implements';
 import { AdminReports } from './pages/admin/Reports';
 import { AdminStudents } from './pages/admin/Students';
 import { AdminTeachers } from './pages/admin/Teachers';
@@ -56,6 +57,7 @@ export function App() {
         <Route path="profesores" element={<AdminTeachers />} />
         <Route path="estudiantes" element={<AdminStudents />} />
         <Route path="reportes" element={<AdminReports />} />
+        <Route path="implementos" element={<AdminImplements />} />
         <Route path="catalogo" element={<AdminCatalog />} />
       </Route>
       <Route path="/profesor" element={<RequireRole role="teacher"><Layout role="teacher" /></RequireRole>}>

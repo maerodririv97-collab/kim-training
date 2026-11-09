@@ -114,6 +114,7 @@ export function StudentSheet({ studentId }: { studentId: number }) {
       </div>
       <div className="sum-row"><span className="k">Plan actual</span><span className="v">{plan?.name ?? 'Sin plan vigente'}</span></div>
       {plan && <div className="sum-row"><span className="k">Clases disponibles</span><span className="v">{plan.remaining} de {plan.total_classes} · vence {fmtDate(plan.ends_on)}</span></div>}
+      {plan && plan.implements.length > 0 && <div className="sum-row"><span className="k">Implementos</span><span className="v">{plan.implements.join(', ')}</span></div>}
       <div className="sum-row"><span className="k">Última asistencia</span><span className="v">{fmtAgo(s.last_attended_at)}</span></div>
       <div className="sum-row"><span className="k">Total de clases</span><span className="v">{s.attended}</span></div>
       <div className="sum-row"><span className="k">Asistencia</span><span className="v">{data.attendance_pct}%</span></div>

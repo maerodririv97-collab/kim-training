@@ -20,6 +20,7 @@ pub fn routes() -> AppRouter {
         .route("/me/overview", get(overview))
         .route("/me/agenda", get(agenda))
         .route("/me/classes/{id}", get(class_detail))
+        .route("/me/classes/{id}/plan-options", get(plan_options))
         .route("/me/bookings", get(list_bookings).post(create_booking))
         .route("/me/waitlist", post(join_waitlist))
         .route("/me/bookings/{id}/cancel", post(cancel_booking))
@@ -162,12 +163,24 @@ struct ClassIdBody {
     class_id: i64,
 }
 
-async fn create_booking(State(state): State<AppState>, me: Student, Json(body): Json<ClassIdBody>) -> ApiResult<Json<BookingResult>> {
-    Ok(Json(booking::book(&state.db, &state.cfg.tz, me.student_id, body.class_id).await?))
+#[derive(Deserialize)]
+struct BookBody {
+    class_id: i64,
+    /// Plan del que se descuenta la clase (si el estudiante tiene varios vigentes).
+    plan_id: Option<i64>,
 }
 
-async fn join_waitlist(State(state): State<AppState>, me: Student, Json(body): Json<ClassIdBody>) -> ApiResult<Json<WaitlistResult>> {
-    Ok(Json(booking::join_waitlist(&state.db, &state.cfg.tz, me.student_id, body.class_id).await?))
+async fn create_booking(State(state): State<AppState>, me: Student, Json(body): Json<BookBody>) -> ApiResult<Json<BookingResult>> {
+    Ok(Json(booking::book(&state.db, &state.cfg.tz, me.student_id, body.class_id, body.plan_id).await?))
+}
+
+async fn join_waitlist(State(state): State<AppState>, me: Student, Json(body): Json<BookBody>) -> ApiResult<Json<WaitlistResult>> {
+    Ok(Json(booking::join_waitlist(&state.db, &state.cfg.tz, me.student_id, body.class_id, body.plan_id).await?))
+}
+
+/// Planes vigentes con los que el estudiante puede tomar la clase.
+async fn plan_options(State(state): State<AppState>, me: Student, Path(id): Path<i64>) -> ApiResult<Json<Vec<booking::PlanOption>>> {
+    Ok(Json(booking::plan_options(&state.db, &state.cfg.tz, me.student_id, id).await?))
 }
 
 async fn cancel_booking(State(state): State<AppState>, me: Student, Path(id): Path<i64>) -> ApiResult<Json<CancelResult>> {

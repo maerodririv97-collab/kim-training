@@ -1,6 +1,7 @@
 mod admin_catalog;
 mod admin_classes;
 mod admin_disciplines;
+mod admin_implements;
 mod admin_people;
 mod admin_reports;
 mod auth;
@@ -30,6 +31,7 @@ pub fn router(state: AppState) -> Router {
                 .merge(admin_people::routes())
                 .merge(admin_catalog::routes())
                 .merge(admin_disciplines::routes())
+                .merge(admin_implements::routes())
                 .merge(invites::admin_routes())
                 .merge(admin_reports::routes()),
         )
