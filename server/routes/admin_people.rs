@@ -514,6 +514,14 @@ async fn insert_plan(tx: &mut sqlx::PgConnection, student_id: i64, plan_id: i64,
     .bind(ends_on)
     .fetch_one(&mut *tx)
     .await?;
+    sqlx::query(
+        "INSERT INTO student_plan_implements (student_plan_id, implement_id)
+         SELECT $1, implement_id FROM plan_implements WHERE plan_id = $2",
+    )
+    .bind(id)
+    .bind(plan_id)
+    .execute(&mut *tx)
+    .await?;
     Ok(id)
 }
 

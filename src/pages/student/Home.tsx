@@ -96,6 +96,9 @@ export function StudentHome() {
             <div style={{ marginTop: 8, fontSize: 13 }}>
               <strong style={{ color: 'var(--pulse-dark)' }}>{plan.remaining} clases disponibles</strong> · vence {fmtDate(plan.ends_on)}
             </div>
+            {plan.implements.length > 0 && (
+              <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--muted)' }}>Incluye: {plan.implements.join(', ')} en cada clase</div>
+            )}
           </div>
           <button className="btn btn-primary" onClick={() => navigate('/agenda')}>Reservar clase</button>
         </div>

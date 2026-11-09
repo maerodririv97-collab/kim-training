@@ -11,7 +11,7 @@ use sqlx::FromRow;
 use crate::auth::Admin;
 use crate::booking::{self, BookingResult};
 use crate::error::{ApiResult, AppError};
-use crate::models::{ClassItem, LEVELS, SEAT_STATUSES, class_select, initials};
+use crate::models::{ClassItem, LEVELS, SEAT_STATUSES, class_implements, class_select, initials};
 use crate::time::{local_range, local_to_utc, parse_date, parse_time, today};
 use crate::{AppRouter, AppState};
 
@@ -23,7 +23,9 @@ pub fn routes() -> AppRouter {
         .route("/classes/{id}/cancel", post(cancel_class))
         .route("/classes/{id}/duplicate", post(duplicate_class))
         .route("/classes/{id}/attendees", get(attendees).post(add_attendee))
+        .route("/classes/{id}/plan-options", get(plan_options))
         .route("/bookings/{id}/status", put(set_booking_status))
+        .route("/bookings/{id}/cancel", post(cancel_booking))
 }
 
 #[derive(Deserialize)]
@@ -224,6 +226,8 @@ struct Attendee {
     status: String,
     plan_name: Option<String>,
     created_at: DateTime<Utc>,
+    /// Implementos apartados por la reserva (ej. "Moto").
+    implements: Vec<String>,
 }
 
 async fn attendees(State(state): State<AppState>, _: Admin, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
@@ -244,7 +248,10 @@ pub(crate) async fn load_attendees(state: &AppState, id: i64, teacher_id: Option
     .await?
     .ok_or_else(|| AppError::not_found("La clase no existe"))?;
     let rows = sqlx::query_as::<_, Attendee>(
-        "SELECT b.id AS booking_id, s.id AS student_id, s.name, u.email, b.status, sp.name AS plan_name, b.created_at
+        "SELECT b.id AS booking_id, s.id AS student_id, s.name, u.email, b.status, sp.name AS plan_name, b.created_at,
+                coalesce((SELECT array_agg(i.name ORDER BY i.name) FROM booking_implements bi
+                          JOIN implements i ON i.id = bi.implement_id
+                          WHERE bi.booking_id = b.id AND b.status IN ('booked','attended','noshow')), '{}') AS implements
          FROM bookings b
          JOIN students s ON s.id = b.student_id
          JOIN users u ON u.id = s.user_id
@@ -263,17 +270,47 @@ pub(crate) async fn load_attendees(state: &AppState, id: i64, teacher_id: Option
             v
         })
         .collect();
-    Ok(json!({ "class": class, "attendees": attendees }))
+    let mut conn = state.db.acquire().await?;
+    let implements = class_implements(&mut conn, id).await?;
+    Ok(json!({ "class": class, "attendees": attendees, "implements": implements }))
 }
 
 #[derive(Deserialize)]
 struct AddAttendeeBody {
     student_id: i64,
+    /// Plan del que se descuenta la clase (si el estudiante tiene varios vigentes).
+    plan_id: Option<i64>,
 }
 
 /// Reserva hecha por el administrador en nombre del estudiante (mismas reglas de cupo y plan).
 async fn add_attendee(State(state): State<AppState>, _: Admin, Path(id): Path<i64>, Json(body): Json<AddAttendeeBody>) -> ApiResult<Json<BookingResult>> {
-    Ok(Json(booking::book(&state.db, &state.cfg.tz, body.student_id, id).await?))
+    Ok(Json(booking::book(&state.db, &state.cfg.tz, body.student_id, id, body.plan_id).await?))
+}
+
+#[derive(Deserialize)]
+struct PlanOptionsQuery {
+    student_id: i64,
+}
+
+/// Planes vigentes del estudiante con los que se puede tomar la clase.
+async fn plan_options(State(state): State<AppState>, _: Admin, Path(id): Path<i64>, Query(q): Query<PlanOptionsQuery>) -> ApiResult<Json<Vec<booking::PlanOption>>> {
+    Ok(Json(booking::plan_options(&state.db, &state.cfg.tz, q.student_id, id).await?))
+}
+
+#[derive(Deserialize)]
+struct AdminCancelBody {
+    /// true: la clase vuelve al plan del estudiante; false: se cuenta como cancelación tardía.
+    #[serde(default = "refund_default")]
+    refund: bool,
+}
+
+fn refund_default() -> bool {
+    true
+}
+
+/// El administrador cancela una reserva o una solicitud de lista de espera (antes de que empiece la clase).
+async fn cancel_booking(State(state): State<AppState>, _: Admin, Path(id): Path<i64>, Json(body): Json<AdminCancelBody>) -> ApiResult<Json<booking::CancelResult>> {
+    Ok(Json(booking::admin_cancel(&state.db, &state.cfg.tz, id, body.refund).await?))
 }
 
 #[derive(Deserialize)]

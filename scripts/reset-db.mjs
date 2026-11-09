@@ -1,5 +1,5 @@
 // BORRA todos los datos (usuarios, disciplinas, profesores, estudiantes, planes, clases, reservas,
-// promociones). Conserva la estructura de tablas y el registro de migraciones.
+// promociones, implementos). Conserva la estructura de tablas y el registro de migraciones.
 //
 //   npm run db:reset -- --yes
 import 'dotenv/config';
@@ -20,7 +20,7 @@ await client.connect();
 try {
   const host = new URL(url).host;
   await client.query(
-    `TRUNCATE users, disciplines, teachers, plans, classes, promotions, password_reset_requests
+    `TRUNCATE users, disciplines, teachers, plans, classes, promotions, password_reset_requests, implements
      RESTART IDENTITY CASCADE`,
   );
   console.log(`Datos borrados en ${host}. Crea el administrador con: npm run db:create-admin`);

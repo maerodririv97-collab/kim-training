@@ -104,7 +104,7 @@ try {
   }
 
   await client.query('BEGIN');
-  await client.query(`TRUNCATE users, disciplines, teachers, plans, classes, promotions RESTART IDENTITY CASCADE`);
+  await client.query(`TRUNCATE users, disciplines, teachers, plans, classes, promotions, implements RESTART IDENTITY CASCADE`);
 
   const { rows: [{ today, now_local }] } = await client.query(
     `SELECT to_char(now() AT TIME ZONE $1, 'YYYY-MM-DD') AS today,

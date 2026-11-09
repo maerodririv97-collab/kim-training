@@ -55,6 +55,8 @@ export interface PlanStatus {
   price: number;
   starts_on: string;
   ends_on: string;
+  /** Implementos que incluye el plan (ej. "Moto"). */
+  implements: string[];
 }
 
 export interface Overview {
@@ -171,6 +173,8 @@ export interface Attendee {
   status: BookingStatus;
   plan_name: string | null;
   created_at: string;
+  /** Implementos apartados por la reserva. */
+  implements: string[];
 }
 
 export interface Teacher {
@@ -240,6 +244,68 @@ export interface Plan {
   price: number;
   active: boolean;
   active_students: number;
+  implement_ids: number[];
+}
+
+/** Plan vigente con el que se puede tomar una clase. */
+export interface PlanOption {
+  id: number;
+  name: string;
+  remaining: number;
+  ends_on: string;
+  /** Implementos del plan que se apartarían en esa clase. */
+  implements: string[];
+  /** false si alguno de esos implementos está agotado en el horario. */
+  implements_available: boolean;
+}
+
+export type ImplementKind = 'loan' | 'rent';
+
+export interface Implement {
+  id: number;
+  name: string;
+  description: string;
+  kind: ImplementKind;
+  quantity: number;
+  active: boolean;
+  created_at: string;
+  /** Vacío = aplica a todas las disciplinas. */
+  discipline_ids: number[];
+  plan_ids: number[];
+  active_students: number;
+  upcoming_reserved: number;
+  /** Máximo ocupado a la vez en un horario de los próximos 7 días. */
+  peak_used: number;
+}
+
+/** Uso de un implemento en el horario de una clase. */
+export interface ImplementUsage {
+  id: number;
+  name: string;
+  quantity: number;
+  used: number;
+  in_class: number;
+  available: number;
+}
+
+export interface ImplementSchedule {
+  implement: { id: number; name: string; quantity: number; active: boolean };
+  from: string;
+  to: string;
+  classes: {
+    class_id: number;
+    discipline: string;
+    color: string;
+    teacher: string;
+    starts_at: string;
+    duration_min: number;
+    location: string;
+    capacity: number;
+    booked: number;
+    in_class: number;
+    used: number;
+    available: number;
+  }[];
 }
 
 export interface AdminPromotion extends Promotion {
